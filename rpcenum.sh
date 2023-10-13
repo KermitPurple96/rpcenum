@@ -1,7 +1,7 @@
 #!/bin/bash
  
 # Author: Marcelo Vázquez (aka S4vitar)
-# Added rpc user authentication (kermit)
+# Added new features (kermit)
  
 #Colours
 greenColour="\e[0;32m\033[1m"
@@ -154,7 +154,7 @@ function extract_DUsers_Info(){
  
   if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
     for user in $domain_users; do
-		 rpcclient -U "$2\\$3%$4" $1 -c "queryuser $user" | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
+		 rpcclient -U "$2\\$3%$4" $1 -c "queryuser $user" | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
       username=$(cat $tmp_file | head -n 1 | awk '{print $2}' FS=",")
 		 echo -e '\n' >> $tmp_file
       
@@ -177,7 +177,7 @@ function extract_DUsers_Info(){
   else
 
     for user in $domain_users; do
-		 rpcclient -U "" $1 -c "queryuser $user" -N | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
+		 rpcclient -U "" $1 -c "queryuser $user" -N | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
       username=$(cat $tmp_file | head -n 1 | awk '{print $1}' FS=",")
 		 echo -e '\n' >> $tmp_file
       echo "Username,$username" > $tmp_file2
@@ -197,7 +197,68 @@ function extract_DUsers_Info(){
   fi
  
 }
+
+
+function enum_shares(){
  
+ 
+	echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating shared folders...${endColour}\n"
+ 
+  if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+		rpcclient -U "$2\\$3%$4" $1 -c "netshareenumall" | tr -d '\t' | sed 's/:/,/' | sed 's/\\/\\\\/g' >> $tmp_file
+    lines=$(cat $tmp_file | wc -l)
+    shares=$((lines / 4))
+    
+    for ((i = 1; i <= shares; i++)); do
+      
+      echo "$3,shares" > $tmp_file2
+	   cat $tmp_file | sed '/^\s*$/d' | awk -v n=$i '/netname/ { if (++count == n) { print; getline; for (i=1; i<=3; i++) { print; getline } } }' >> $tmp_file2
+      echo -e "\n" >> $tmp_file2
+      
+      cat $tmp_file2 | sed '/^\s*$/d' | while read user_representation; do
+		   if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
+			   echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file3
+		   fi
+      done
+      
+      echo "" > $tmp_file2;
+	   sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file3)"; echo -ne "${endColour}"
+	   echo "" > $tmp_file3;
+      
+    done
+ 
+	 rm $tmp_file $tmp_file2 $tmp_file3 2>/dev/null
+
+
+  else
+    rpcclient -U "" $1 -c "netshareenumall" | tr -d '\t' | sed 's/:/,/' | sed 's/\\/\\\\/g' >> $tmp_file
+    lines=$(cat $tmp_file | wc -l)
+    shares=$((lines / 4))
+    
+    for ((i = 1; i <= shares; i++)); do
+      
+      echo "$3,shares" > $tmp_file2
+	   cat $tmp_file | sed '/^\s*$/d' | awk -v n=$i '/netname/ { if (++count == n) { print; getline; for (i=1; i<=3; i++) { print; getline } } }' >> $tmp_file2
+      echo -e "\n" >> $tmp_file2
+      
+      cat $tmp_file2 | sed '/^\s*$/d' | while read user_representation; do
+		   if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
+			   echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file3
+		   fi
+      done
+      
+      echo "" > $tmp_file2;
+	   sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file3)"; echo -ne "${endColour}"
+	   echo "" > $tmp_file3;
+      
+    done
+ 
+	 rm $tmp_file $tmp_file2 $tmp_file3 2>/dev/null
+  fi
+
+}
+
+
 function extract_DAUsers(){
  
 	echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating Domain Admin Users...${endColour}\n"
@@ -266,6 +327,7 @@ function extract_All(){
 	extract_DUsers_Info $1 $2 $3 $4
 	extract_DAUsers $1 $2 $3 $4
 	extract_DGroups $1 $2 $3 $4
+  enum_shares $1 $2 $3 $4
 }
  
 function beginEnumeration(){
