@@ -154,46 +154,46 @@ function extract_DUsers_Info(){
  
   if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
     for user in $domain_users; do
-		 rpcclient -U "$2\\$3%$4" $1 -c "queryuser $user" | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
+		rpcclient -U "$2\\$3%$4" $1 -c "queryuser $user" | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
       username=$(cat $tmp_file | head -n 1 | awk '{print $2}' FS=",")
-		 echo -e '\n' >> $tmp_file
+		echo -e '\n' >> $tmp_file
       
       echo "User,$username" > $tmp_file2
   
       #cat $tmp_file
-	   cat $tmp_file | sed '/^\s*$/d' | while read user_representation; do
-		 if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
-			 echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file2
-		 fi
+	  cat $tmp_file | sed '/^\s*$/d' | while read user_representation; do
+		if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
+			echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file2
+		fi
     
-	 done
+	done
  
-	 rm $tmp_file; mv $tmp_file2 $tmp_file
-	 sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
-	 rm $tmp_file 2>/dev/null
-	 done
+	rm $tmp_file; mv $tmp_file2 $tmp_file
+	sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+	rm $tmp_file 2>/dev/null
+	done
 
 
   else
 
     for user in $domain_users; do
-		 rpcclient -U "" $1 -c "queryuser $user" -N | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
+		rpcclient -U "" $1 -c "queryuser $user" -N | grep -vE 'Time' | grep -v 'Time' | sed 's/\t//' | tr ':' ',' | sed 's/\t//' | tr -d ' ' >> $tmp_file
       username=$(cat $tmp_file | head -n 1 | awk '{print $1}' FS=",")
-		 echo -e '\n' >> $tmp_file
+		echo -e '\n' >> $tmp_file
       echo "Username,$username" > $tmp_file2
   
       #cat $tmp_file
-	   cat $tmp_file | sed '/^\s*$/d' | while read user_representation; do
-		 if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
-			 echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file2
-		 fi
+	  cat $tmp_file | sed '/^\s*$/d' | while read user_representation; do
+		if [ "$(echo $user_representation | awk '{print $2}' FS=',')" ]; then
+			echo "$(echo $user_representation | awk '{print $1}' FS=','),$(echo $user_representation | awk '{print $2}' FS=',')" >> $tmp_file2
+		fi
     
-	   done
+	  done
  
-	   rm $tmp_file; mv $tmp_file2 $tmp_file
-	   sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
-	   rm $tmp_file 2>/dev/null
-	 done
+	  rm $tmp_file; mv $tmp_file2 $tmp_file
+	  sleep 1; echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+	  rm $tmp_file 2>/dev/null
+	done
   fi
  
 }
@@ -260,17 +260,92 @@ function extract_DGroups(){
 	echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
 	rm $tmp_file 2>/dev/null
 }
+
+
+
+
+function extract_DGroups_Members(){
  
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating Domain Groups and their members...${endColour}\n"
+   
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "enumdomgroups" | grep -oP '\[.*?\]' | grep "0x" | tr -d '[]' >> $tmp_file
+        echo "DomainGroup,Members" > $tmp_file2
+        cat $tmp_file | while read rid_domain_groups; do
+            members_rids=$(rpcclient -U "$2\\$3%$4" $host_ip -c "querygroupmem $rid_domain_groups" | grep -oP '\[.*?\]' | tr -d '[]')
+            members=""
+            for member_rid in $members_rids; do
+                member_name=$(rpcclient -U "$2\\$3%$4" $host_ip -c "queryuser $member_rid" | grep "User Name" | awk '{print $NF}')
+                members="${members} ${member_name}"
+            done
+            group_name=$(rpcclient -U "$2\\$3%$4" $host_ip -c "querygroup $rid_domain_groups" | grep "Group Name" | awk '{print $NF}')
+            echo "$(echo $group_name),$(echo $members)" >> $tmp_file2
+        done
+
+    else
+        rpcclient -U "" $host_ip -c "enumdomgroups" -N | grep -oP '\[.*?\]' | grep "0x" | tr -d '[]' >> $tmp_file
+        echo "DomainGroup,Members" > $tmp_file2
+        cat $tmp_file | while read rid_domain_groups; do
+            members_rids=$(rpcclient -U "" $host_ip -c "querygroupmem $rid_domain_groups" -N | grep -oP '\[.*?\]' | tr -d '[]')
+            members=""
+            for member_rid in $members_rids; do
+                member_name=$(rpcclient -U "" $host_ip -c "queryuser $member_rid" -N | grep "User Name" | awk '{print $NF}')
+                members="${members} ${member_name}"
+            done
+            group_name=$(rpcclient -U "" $host_ip -c "querygroup $rid_domain_groups" -N | grep "Group Name" | awk '{print $NF}')
+            echo "$(echo $group_name),$(echo $members)" >> $tmp_file2
+        done
+
+    fi
+       
+    rm $tmp_file 2>/dev/null && mv $tmp_file2 $tmp_file
+    echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+function extract_SIDs(){
+ 
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Obtaining SIDs for all users...${endColour}\n"
+   
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "enumdomusers" | grep -oP '\[.*?\]' | grep -v 0x | tr -d '[]' >> $tmp_file
+        echo "Username,SID" > $tmp_file2
+        cat $tmp_file | while read username; do
+            sid=$(rpcclient -U "$2\\$3%$4" $host_ip -c "lookupnames $username" | awk '{print $2}')
+            echo "$(echo $username),$(echo $sid)" >> $tmp_file2
+        done
+    else
+        rpcclient -U "" $host_ip -c "enumdomusers" -N | grep -oP '\[.*?\]' | grep -v 0x | tr -d '[]' >> $tmp_file
+        echo "Username,SID" > $tmp_file2
+        cat $tmp_file | while read username; do
+            sid=$(rpcclient -U "" $host_ip -c "lookupnames $username" -N | awk '{print $2}')
+            echo "$(echo $username),$(echo $sid)" >> $tmp_file2
+        done
+    fi
+
+    rm $tmp_file 2>/dev/null && mv $tmp_file2 $tmp_file
+    echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
+
 function extract_All(){
 	extract_DUsers $1 $2 $3 $4
 	extract_DUsers_Info $1 $2 $3 $4
 	extract_DAUsers $1 $2 $3 $4
 	extract_DGroups $1 $2 $3 $4
+  extract_DGroups_Members $1 $2 $3 $4
+  extract_SIDs $1 $2 $3 $4
 }
  
 function beginEnumeration(){
  
-	tput civis; nmap -p139 --open -T5 -v -n $host_ip | grep open > /dev/null 2>&1 && port_status=$?
+	tput civis; nmap -p135,139 --open -T5 -v -n $host_ip | grep open > /dev/null 2>&1 && port_status=$?
  
   if [ -n "$domain" ] && [ -n "$user" ] && [ -n "$password" ]; then
 	rpcclient -U "$domain\\$user%$password" $host_ip -c "enumdomusers" > /dev/null 2>&1
