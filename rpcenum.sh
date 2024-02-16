@@ -32,13 +32,23 @@ function helpPanel(){
 	echo -e "\t\t${grayColour}DUsersInfo${endColour}${redColour} (Domain Users with info)${endColour}"
 	echo -e "\t\t${grayColour}DAUsers ${redColour}(Domain Admin Users)${endColour}"
 	echo -e "\t\t${grayColour}DGroups ${redColour}(Domain Groups)${endColour}"
+  echo -e "\t\t${grayColour}DGroups_Members ${redColour}(Extract groups and their members)${endColour}"
+  echo -e "\t\t${grayColour}SIDs ${redColour}(extract every user SID)${endColour}"
+  echo -e "\t\t${grayColour}enumprivs ${redColour}(Lists the privileges of the user we pass to it.)${endColour}"
+  echo -e "\t\t${grayColour}lsaenumsids ${redColour}(Lists the SIDs of the LSA)${endColour}"
+  echo -e "\t\t${grayColour}netshare ${redColour}(List of shared resources)${endColour}"
+  echo -e "\t\t${grayColour}domainsid ${redColour}(Get domain SID)${endColour}"
+  echo -e "\t\t${grayColour}alldomainsids ${redColour}(Get all domains SIDs)${endColour}"
+
 	echo -e "\t\t${grayColour}All ${redColour}(All Modes)${endColour}"
 	echo -e "\n\t${purpleColour}i)${endColour}${yellowColour} Host IP Address${endColour}"
 	echo -e "\n\t${purpleColour}u)${endColour}${yellowColour} Username${endColour}"
   echo -e "\n\t${purpleColour}p)${endColour}${yellowColour} Password${endColour}"
   echo -e "\n\t${purpleColour}d)${endColour}${yellowColour} Domain${endColour}"
   echo -e "\n\t${purpleColour}h)${endColour}${yellowColour} Show this help pannel${endColour}\n"
-  echo -e "\n\t${redColour}Example: ${endColour}${yellowColour} rpcenum.sh -e All -i 192.168.1.1 -u 'Administrator' -p 'Password123' -d 'domain.local'${endColour}\n\n"
+  
+  echo -e "\n\t${redColour}Examples: \n\n\t\t${endColour}${greenColour} rpcenum.sh -e All -i 192.168.1.1${endColour}"
+  echo -e "\n\t\t${greenColour} rpcenum.sh -e All -i 192.168.1.1 -u 'Administrator' -p 'Password123' -d 'domain.local'${endColour}\n\n"
 	exit 1
 }
  
@@ -333,6 +343,120 @@ function extract_SIDs(){
 
 
 
+function enumPrivs() {
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating privileges...${endColour}\n"
+
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "enumprivs" | awk 'NR>1{print $1}' | grep -v '^$' > $tmp_file
+    else
+        rpcclient -U "" $host_ip -c "enumprivs" -N | awk 'NR>1{print $1}' | grep -v '^$' > $tmp_file
+    fi
+
+    echo -ne "${blueColour}"; cat $tmp_file; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
+
+
+function lsaenumsids(){
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating SIDs and looking up information...${endColour}\n"
+
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "lsaenumsid" | awk 'NR>1{print $1}' | grep -v '^$' >> $tmp_file
+        echo "SID,Information" > $tmp_file2
+        cat $tmp_file | while read sid; do
+            lookup_output=$(rpcclient -U "$2\\$3%$4" $host_ip -c "lookupsids $sid" | awk -F ' ' '{ $1=""; print $0 }' | sed 's/^[ \t]*//')
+            echo "$(echo $sid),$(echo $lookup_output)" >> $tmp_file2
+        done
+
+    else
+        rpcclient -U "" $host_ip -c "lsaenumsid" -N | awk 'NR>1{print $1}' | grep -v '^$' >> $tmp_file
+        echo "SID,Information" > $tmp_file2
+        cat $tmp_file | while read sid; do
+            lookup_output=$(rpcclient -U "" $host_ip -c "lookupsids $sid" -N | awk -F ' ' '{ $1=""; print $0 }' | sed 's/^[ \t]*//')
+            echo "$(echo $sid),$(echo $lookup_output)" >> $tmp_file2
+        done
+
+    fi
+
+
+    rm $tmp_file 2>/dev/null && mv $tmp_file2 $tmp_file
+    echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
+
+function netshareenumall(){
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating shares and their information...${endColour}\n"
+
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "netshareenumall" > $tmp_file
+    else
+        rpcclient -U "" $host_ip -c "netshareenumall" -N > $tmp_file
+    fi
+
+    cat $tmp_file
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
+
+
+function lsaquery() {
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Querying domain information...${endColour}\n"
+
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "lsaquery" | grep -E "Domain Name:|Domain Sid:" | awk -F ": " '{gsub(/^\s+|\s+$/, "", $2); print $2}' > $tmp_file
+        echo "Domain Name,Domain Sid" > $tmp_file2
+        paste -d',' - - < $tmp_file >> $tmp_file2
+    else
+        rpcclient -U "" $host_ip -c "lsaquery" -N | grep -E "Domain Name:|Domain Sid:" | awk -F ": " '{gsub(/^\s+|\s+$/, "", $2); print $2}' > $tmp_file
+        echo "Domain Name,Domain Sid" > $tmp_file2
+        paste -d',' - - < $tmp_file >> $tmp_file2
+    fi
+
+    rm $tmp_file 2>/dev/null && mv $tmp_file2 $tmp_file
+    echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
+
+#!/bin/bash
+
+function enumdomains() {
+    echo -e "\n${yellowColour}[*]${endColour}${grayColour} Enumerating domains and looking up information...${endColour}\n"
+
+    if [ -n "$2" -a -n "$3" -a -n "$4" ]; then
+        rpcclient -U "$2\\$3%$4" $host_ip -c "enumdomains" | grep -oP 'name:\[.*?\]' | awk -F '[][]' '{print $2}' | grep -v "Builtin" > $tmp_file
+    else
+        rpcclient -U "" $host_ip -c "enumdomains" -N | grep -oP 'name:\[.*?\]' | awk -F '[][]' '{print $2}' | grep -v "Builtin" > $tmp_file
+    fi
+
+    echo "Domain Name,Domain SID" > $tmp_file2
+    cat $tmp_file | while read domain_name; do
+        lookup_output=$(rpcclient -U "$2\\$3%$4" $host_ip -c "lookupdomain $domain_name" | grep -oP 'Domain SID: \K\S+')
+        echo "$domain_name,$lookup_output" >> $tmp_file2
+    done
+
+    rm $tmp_file 2>/dev/null && mv $tmp_file2 $tmp_file
+    echo -ne "${blueColour}"; printTable ',' "$(cat $tmp_file)"; echo -ne "${endColour}"
+    rm $tmp_file 2>/dev/null
+}
+
+
+
+
 
 function extract_All(){
 	extract_DUsers $1 $2 $3 $4
@@ -341,11 +465,16 @@ function extract_All(){
 	extract_DGroups $1 $2 $3 $4
   extract_DGroups_Members $1 $2 $3 $4
   extract_SIDs $1 $2 $3 $4
+  enumPrivs $1 $2 $3 $4
+  lsaenumsids $1 $2 $3 $4
+  netshareenumall $1 $2 $3 $4
+  lsaquery $1 $2 $3 $4
+  enumdomains $1 $2 $3 $4
 }
  
 function beginEnumeration(){
  
-	tput civis; nmap -p135,139 --open -T5 -v -n $host_ip | grep open > /dev/null 2>&1 && port_status=$?
+	tput civis; nmap -p139 --open -T5 -v -n $host_ip | grep open > /dev/null 2>&1 && port_status=$?
  
   if [ -n "$domain" ] && [ -n "$user" ] && [ -n "$password" ]; then
 	rpcclient -U "$domain\\$user%$password" $host_ip -c "enumdomusers" > /dev/null 2>&1
@@ -367,6 +496,27 @@ function beginEnumeration(){
 					;;
 				DGroups)
 					extract_DGroups $host_ip $domain $user $password
+					;;
+        DGroups_Members)
+					extract_DGroups_Members $host_ip $domain $user $password
+					;;
+        SIDs)
+					extract_SIDs $host_ip $domain $user $password
+					;;
+        enumprivs)
+					enumPrivs $host_ip $domain $user $password
+					;;
+        lsaenumsids)
+					lsaenumsids $host_ip $domain $user $password
+					;;
+        netshare)
+					netshareenumall $host_ip $domain $user $password
+					;;
+        domainsid)
+					lsaquery $host_ip $domain $user $password
+					;;
+        alldomainsids)
+					enumdomains $host_ip $domain $user $password
 					;;
 				All)
 					extract_All $host_ip $domain $user $password
